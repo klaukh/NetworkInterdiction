@@ -1,7 +1,5 @@
 # TODO: For interdiction costs, add option - like Capacity - where a -1 then translates to infinity (BigM?)
 # TODO: Change around the Supply and Demand signs
-# TODO: add solver manager and solver options
-# TODO: add outfile option
 
 import pandas
 import pyomo
@@ -18,8 +16,9 @@ class MultiCommodityInterdiction:
             arc_commodity_file, attacks = 0,
             arc_cost = "ArcCost", 
             interdiction_cost = "InterdictionCost",
-            outfile = ""):
-
+            outfile = "",
+            solver = "cbc",
+            options_string = "mingap = 0"):
         """
         All the files are CSVs with columns described below.
 
@@ -62,6 +61,16 @@ class MultiCommodityInterdiction:
 
         The column reference in the arc_commodity_file for the additional 
         arc cost imposed if an interdiction is placed there.
+
+        - outfile:
+
+        String to prepend to output files generated.
+
+        - solver:
+        The name, as a string, of the solver to use.
+
+        - options_string:
+        Options to pass to the solver, as a single string.
 
         """
 
@@ -238,9 +247,13 @@ class MultiCommodityInterdiction:
         self.Idual = model
 
     def solve(self, tee=False):
+        # grab the solver and options from this
+        solv = self.solver
+        opts = self.options_string
+
         # reset the number of attacks used
         self.total_attacks = 0
-        solver = pyomo.opt.SolverFactory('cbc')
+        solver = pyomo.opt.SolverFactory(solv)
 
         # Solve the dual first
         self.Idual.BlockLimit.construct()
@@ -248,7 +261,7 @@ class MultiCommodityInterdiction:
         del self.Idual.BlockLimit._data[None]
         self.Idual.BlockLimit.reconstruct()
         self.Idual.preprocess()
-        results = solver.solve(self.Idual, tee=tee, keepfiles=False, options_string="mipgap=0")
+        results = solver.solve(self.Idual, tee=tee, keepfiles=False, options_string=opts)
 
         # Check that we actually computed an optimal solution, load results
         if (results.solver.status != pyomo.opt.SolverStatus.ok):
