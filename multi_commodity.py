@@ -1,5 +1,6 @@
 # TODO: For interdiction costs, add option - like Capacity - where a -1 then translates to infinity (BigM?)
 # TODO: Change around the Supply and Demand signs
+# TODO: Add NEOS solver manager option
 
 import pandas
 import pyomo
@@ -8,24 +9,26 @@ import pyomo.environ as pe
 import logging
 import csv
 
+# NOTE: we won't consider Node interdiction, as Node interdiction can easily be represented by
+# bifurcating each node into two and placing an unconstrained, no-cost arc between them
 
 class MultiCommodityInterdiction:
     """A class to compute multicommodity flow interdictions."""
 
-    def __init__(self, nodefile, node_commodity_file, arcfile, 
+    def __init__(self, node_file, node_commodity_file, arc_file, 
             arc_commodity_file, attacks = 0,
             arc_cost = "ArcCost", 
             interdiction_cost = "InterdictionCost",
             outfile = "",
             solver = "cbc",
-            options_string = "mingap = 0"):
+            options_string = "mingap=0"):
         """
         All the files are CSVs with columns described below.
 
-        - nodefile:
+        - node_file:
             Node
 
-        Every node must appear as a line in the nodefile.  You can have 
+        Every node must appear as a line in the node_file.  You can have 
         additional columns as well.
 
         - node_commodity_file:
@@ -34,10 +37,10 @@ class MultiCommodityInterdiction:
         Every commodity node imbalance that is not zero must appear in the 
         node_commodity_file
 
-        - arcfile:
+        - arc_file:
             StartNode,EndNode,Capacity,Attackable
 
-        Every arc must appear in the arcfile.  Also the arcs total capacity 
+        Every arc must appear in the arc_file.  Also the arcs total capacity 
         and whether we can attack this arc.
 
         - arc_commodity_file:
@@ -75,7 +78,7 @@ class MultiCommodityInterdiction:
         """
 
         # Read in the node_data
-        self.node_data = pandas.read_csv(nodefile)
+        self.node_data = pandas.read_csv(node_file)
         self.node_data.set_index(['Node'], inplace=True)
         self.node_data.sort_index(inplace=True)
 
@@ -85,7 +88,7 @@ class MultiCommodityInterdiction:
         self.node_commodity_data.sort_index(inplace=True)
 
         # Read in the arc_data
-        self.arc_data = pandas.read_csv(arcfile)
+        self.arc_data = pandas.read_csv(arc_file)
         self.arc_data.set_index(['StartNode', 'EndNode'], inplace=True)
         self.arc_data.sort_index(inplace=True)
 
@@ -105,6 +108,13 @@ class MultiCommodityInterdiction:
         self.node_set = self.node_data.index.unique()
         self.commodity_set = self.node_commodity_data.index.levels[1].unique()
         self.arc_set = self.arc_data.index.unique()
+
+        # set up solver params
+        self.solver = solver
+        self.options_string = options_string
+
+        # outfile arg
+        self.outfile = outfile
 
         # Compute nCmax
         self.nCmax = len(self.node_set) * \
@@ -299,14 +309,14 @@ class MultiCommodityInterdiction:
 
     def printSolution(self):
         delim = "_"
-        outfile = self.outfile
 
         print()
         print('\nUsing %d attacks:' % self.attacks)
         print()
         edges = sorted(self.arc_set)
-        csvfile = delim.join(outfile, arc_cost, interdiction_cost, 
-                "Interdictions.csv")
+        csvfile = delim.join((self.outfile, self.arc_cost, 
+                self.interdiction_cost, 
+                "Interdictions.csv"))
 
         # write outputs to files and print to console
         # interdictions first
@@ -321,8 +331,9 @@ class MultiCommodityInterdiction:
         print()
 
         # flows next
-        csvfile = delim.join(outfile, arc_cost, interdiction_cost, 
-                "Flows.csv")
+        csvfile = delim.join((self.outfile, self.arc_cost, 
+                self.interdiction_cost, 
+                "Flows.csv"))
         with open(csvfile, "w+") as output:
             writer = csv.writer(output, lineterminator="\n")
             for e0, e1 in self.arc_set:

@@ -4,20 +4,22 @@
 if __name__ == '__main__':
     from multi_commodity import *
 
-    nodes_data = 'nodes_data.csv'
-    node_commodity_data = 'nodes_commodity_data.csv'
-    arcs_data = 'arcs_data.csv'
-    arcs_commodity_data = 'arcs_commodity_data.csv'
-    arc_cost = 'Cost'
+    node_data = 'sample_nodes_data.csv'
+    node_commodity_data = 'sample_nodes_commodity_data.csv'
+    arc_data = 'sample_arcs_data.csv'
+    arc_commodity_data = 'sample_arcs_commodity_data.csv'
+    arc_cost = 'ArcCost'
     interdiction_cost = 'InterdictionCost'
-    outfile = 'Outfile'
+    outfile = '_outfile'
 
-    m = MultiCommodityInterdiction(nodes_data,
-                                   nodes_commodity_data,
-                                   arcs_data,
-                                   arcs_commodity_data,
+    m = MultiCommodityInterdiction(node_data,
+                                   node_commodity_data,
+                                   arc_data,
+                                   arc_commodity_data,
+                                   0,
                                    arc_cost,
-                                   interdiction_cost)
+                                   interdiction_cost,
+                                   outfile)
 
     # add any desired heuristics here and run
     i = 0
@@ -25,7 +27,7 @@ if __name__ == '__main__':
     delim = "_"
 
     # setup the output file writer
-    csvfile = delim.join(outfile, arc_cost, interdiction_cost, "Totals.csv")
+    csvfile = delim.join((outfile, arc_cost, interdiction_cost, "Totals.csv"))
     output = open(csvfile, "w+")
     writer = csv.writer(output, lineterminator="\n")
 
