@@ -141,8 +141,6 @@ class MinCostInterdiction:
         self.solver = solver
         self.options_string = options_string
 
-        self.formulate()
-
     def formulate(self):
         """
         Formulate the primal and interdiction dual problems.
@@ -159,7 +157,7 @@ class MinCostInterdiction:
 
     @nodes.setter
     def nodes(self, data):
-        self._nodes = data
+        self._nodes = data.copy(deep=True)
         self._nodes.set_index(['Node'], inplace=True)
         self._nodes.sort_index(inplace=True)
         self._node_set = self._nodes.index.unique()
@@ -170,8 +168,8 @@ class MinCostInterdiction:
         return self._arcs
 
     @arcs.setter
-    def arcs(self, arcs):
-        self._arcs = arcs
+    def arcs(self, data):
+        self._arcs = data.copy(deep=True)
         self._arcs.set_index(['StartNode', 'EndNode'], inplace=True)
         self._arcs.sort_index(inplace=True)
         self._arc_set = self.arcs.index.unique()
@@ -182,8 +180,8 @@ class MinCostInterdiction:
         return self._arc_commodities
 
     @arc_commodities.setter
-    def arc_commodities(self, arc_commodities):
-        self._arc_commodities = arc_commodities
+    def arc_commodities(self, data):
+        self._arc_commodities = data.copy(deep=True)
 
         # for any column with -1 for the interdiction cost, set to nCmax (BigM)
         ic = self.interdiction_costs
@@ -199,8 +197,8 @@ class MinCostInterdiction:
         return self._node_commodities
 
     @node_commodities.setter
-    def node_commodities(self, node_commodities):
-        self._node_commodities = node_commodities
+    def node_commodities(self, data):
+        self._node_commodities = data.copy(deep=True)
         self._node_commodities.set_index(['Node', 'Commodity'], inplace=True)
         self._node_commodities.sort_index(inplace=True)
         self._commodity_set = self.node_commodities.index.levels[1].unique()

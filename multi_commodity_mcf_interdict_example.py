@@ -1,11 +1,12 @@
 
 # example script to run the multi_commodity
 import pandas as pd
-import min_cost.interdiction as mc
+import min_cost.interdiction as mci
 
 if __name__ == '__main__':
 
     # read in data and set parameters
+    print('Reading in data...')
     node_data = pd.read_csv('sample_nodes_data.csv')
     node_commodity_data = pd.read_csv('sample_nodes_commodity_data.csv')
     arc_data = pd.read_csv('sample_arcs_data.csv')
@@ -14,7 +15,8 @@ if __name__ == '__main__':
     interdiction_cost = 'InterdictionCost'
 
     # setup the object
-    m = mc.MinCostInterdiction(nodes=node_data,
+    print('Creating LP...')
+    m = mci.MinCostInterdiction(nodes=node_data,
                                    node_commodities=node_commodity_data,
                                    arcs=arc_data,
                                    arc_commodities=arc_commodity_data,
@@ -24,12 +26,14 @@ if __name__ == '__main__':
 
 
     # add any desired heuristics here and run
+    print('Solving LP...')
     maxAttacks = 5
     for i in range(maxAttacks+1):
         m.attacks = i
         m.solve()
+        print(m.flows)
+        print(m.unsatisfied_commodities)
 
-    print(m.objective_values)
-    print(m.flows)
     print(m.arc_commodities)
+    print(m.objective_values)
 
