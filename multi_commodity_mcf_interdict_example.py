@@ -24,7 +24,6 @@ if __name__ == '__main__':
                                    arc_costs=arc_cost,
                                    interdiction_costs=interdiction_cost)
 
-
     # add any desired heuristics here and run
     print('Solving LP...')
     maxAttacks = 5
