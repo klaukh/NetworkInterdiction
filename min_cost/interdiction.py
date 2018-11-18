@@ -492,7 +492,8 @@ class MinCostInterdiction:
         # in a loop
         edges = sorted(self._arc_set)
         for e in edges:
-            if self._dual.x[e].value > 0:
+            val = self._dual.x[e].value
+            if val is not None and val > 0:
                 self._total_attacks = self._total_attacks + 1
 
         self.save_solution()
