@@ -7,7 +7,9 @@ import logging
 
 
 class MinCostInterdiction:
-    """An LP to compute single- or multi-commodity flow interdictions."""
+    """
+    An LP to compute single- or multi-commodity flow interdictions.
+    """
 
     def __init__(self,
                  nodes: pd.DataFrame = None,
@@ -17,20 +19,20 @@ class MinCostInterdiction:
                  attacks: int = 0,
                  arc_costs: str = "ArcCost",
                  interdiction_costs: str = "InterdictionCost",
-                 solver: str = "cbc",
-                 options_string: str = "mingap=0",
+                 solver: str = "glpk",
+                 options_string: str = "",
                  keep_files = False):
         """
         All the node and arc object are dataframes with columns described below.
 
         nodes:
-            Node
+            ID
 
             Every node must appear as a line in the nodes dataframe.  You can 
             have additional columns as well.
 
         node_commodities:
-            Node,Commodity,SupplyDemand
+            Node,Commodity,Demand
 
             Every commodity node imbalance that is not zero must appear in 
             node_commodities.
@@ -78,7 +80,7 @@ class MinCostInterdiction:
             The name, as a string, of the solver to use.
 
         options_string:
-            "mingap=0" (default)
+            "" (default)
 
             Options to pass to the solver, as a single string.
 
@@ -88,6 +90,7 @@ class MinCostInterdiction:
         Available outputs:
             interdictions: dataframe of chosen arcs
             flows: dataframe of arc flows by commodity
+            total_costs: dataframe of objective values by commodity
             unsatisfied_commodities: dataframe of leftover supply and demand
             primal_solutions
             dual_solutions
@@ -118,12 +121,6 @@ class MinCostInterdiction:
         self.primal_solutions = None  # dataframe of solutions to the primal problem
         self.dual_solutions = None  # dataframe of solutions to the dual problem
 
-        # dataframes for saving results
-        self.interdictions = pd.DataFrame()
-        self.flows = pd.DataFrame()
-        self.unsatisfied_commodities = pd.DataFrame()
-        self.objective_values = pd.DataFrame()
-
         # set the interdiction and cost settings
         self.attacks = attacks
         self.arc_costs = arc_costs
@@ -141,11 +138,23 @@ class MinCostInterdiction:
         self.solver = solver
         self.options_string = options_string
 
+        self.clear_results()
+
+    def clear_results(self):
+        """
+        Populate blank results data.frames
+        """
+        # dataframes for saving results
+        self.interdictions = pd.DataFrame()
+        self.flows = pd.DataFrame()
+        self.total_costs = pd.DataFrame()
+        self.unsatisfied_commodities = pd.DataFrame()
+        self.objective_values = pd.DataFrame()
+
     def formulate(self):
         """
         Formulate the primal and interdiction dual problems.
         """
-
         # create the two formulations
         self.create_primal()
         self.create_interdiction_dual()
@@ -158,7 +167,7 @@ class MinCostInterdiction:
     @nodes.setter
     def nodes(self, data):
         self._nodes = data.copy(deep=True)
-        self._nodes.set_index(['Node'], inplace=True)
+        self._nodes.set_index(["ID"], inplace=True)
         self._nodes.sort_index(inplace=True)
         self._node_set = self._nodes.index.unique()
 
@@ -170,7 +179,7 @@ class MinCostInterdiction:
     @arcs.setter
     def arcs(self, data):
         self._arcs = data.copy(deep=True)
-        self._arcs.set_index(['StartNode', 'EndNode'], inplace=True)
+        self._arcs.set_index(["StartNode", "EndNode"], inplace=True)
         self._arcs.sort_index(inplace=True)
         self._arc_set = self.arcs.index.unique()
 
@@ -186,9 +195,9 @@ class MinCostInterdiction:
         # for any column with -1 for the interdiction cost, set to nCmax (BigM)
         ic = self.interdiction_costs
         self._arc_commodities.loc[self._arc_commodities[ic] == -1, ic] = self._nCmax
-        self._arc_commodities['xbar'] = 0
-        self._arc_commodities.set_index(['StartNode',
-                                         'EndNode', 'Commodity'], inplace=True)
+        self._arc_commodities["xbar"] = 0
+        self._arc_commodities.set_index(["StartNode",
+                                         "EndNode", "Commodity"], inplace=True)
         self._arc_commodities.sort_index(inplace=True)
 
     # NODE COMMODITIES
@@ -199,7 +208,7 @@ class MinCostInterdiction:
     @node_commodities.setter
     def node_commodities(self, data):
         self._node_commodities = data.copy(deep=True)
-        self._node_commodities.set_index(['Node', 'Commodity'], inplace=True)
+        self._node_commodities.set_index(["Node", "Commodity"], inplace=True)
         self._node_commodities.sort_index(inplace=True)
         self._commodity_set = self.node_commodities.index.levels[1].unique()
 
@@ -277,7 +286,7 @@ class MinCostInterdiction:
         # Create the objective
         # MINIMIZE...
         def obj_rule(_model):
-            return sum((data[self.arc_costs] + data['xbar'] * data[self.interdiction_costs]) * _model.y[e]
+            return sum((data[self.arc_costs] + data["xbar"] * data[self.interdiction_costs]) * _model.y[e]
                        for e, data in self.arc_commodities.iterrows()) + \
                    sum(self._nCmax * (_model.UnsatSupply[n] + _model.UnsatDemand[n])
                        for n, data in self._node_commodities.iterrows())
@@ -288,11 +297,11 @@ class MinCostInterdiction:
         # SUBJECT TO...
         def flow_bal_rule(_model, n, k):
             tmp = self.arcs.reset_index()
-            successors = tmp.ix[tmp.StartNode == n, 'EndNode'].values
-            predecessors = tmp.ix[tmp.EndNode == n, 'StartNode'].values
+            predecessors = tmp.ix[tmp.EndNode == n, "StartNode"].values
+            successors = tmp.ix[tmp.StartNode == n, "EndNode"].values
             lhs = sum(_model.y[(i, n, k)] for i in predecessors) - sum(_model.y[(n, i, k)] for i in successors)
 
-            imbalance = self._node_commodities['SupplyDemand'].get((n, k), 0)
+            imbalance = self._node_commodities["Demand"].get((n, k), 0)
             supply_node = int(imbalance < 0)
             demand_node = int(imbalance > 0)
             rhs = (imbalance + _model.UnsatSupply[n, k] * supply_node -
@@ -307,7 +316,7 @@ class MinCostInterdiction:
 
         # Capacity constraints, one for each edge and commodity
         def capacity_rule(_model, i, j, k):
-            capacity = self.arc_commodities['Capacity'].get((i, j, k), -1)
+            capacity = self.arc_commodities["Capacity"].get((i, j, k), -1)
             if capacity < 0:
                 return pe.Constraint.Skip
             return _model.y[(i, j, k)] <= capacity
@@ -317,7 +326,7 @@ class MinCostInterdiction:
 
         # Joint capacity constraints, one for each edge
         def joint_capacity_rule(_model, i, j):
-            capacity = self.arcs['Capacity'].get((i, j), -1)
+            capacity = self.arcs["Capacity"].get((i, j), -1)
             if capacity < 0:
                 return pe.Constraint.Skip
             return sum(_model.y[(i, j, k)]
@@ -363,11 +372,11 @@ class MinCostInterdiction:
         # Create the objective
         # MAXIMIZE...
         def objective_function(_model):
-            return sum(data['Capacity'] * _model.pi_joint[e]
-                       for e, data in self.arcs.iterrows() if data['Capacity'] >= 0) + \
-                   sum(data['Capacity'] * _model.pi_single[e]
-                       for e, data in self.arc_commodities.iterrows() if data['Capacity'] >= 0) + \
-                   sum(data['SupplyDemand'] * _model.rho[n]
+            return sum(data["Capacity"] * _model.pi_joint[e]
+                       for e, data in self.arcs.iterrows() if data["Capacity"] >= 0) + \
+                   sum(data["Capacity"] * _model.pi_single[e]
+                       for e, data in self.arc_commodities.iterrows() if data["Capacity"] >= 0) + \
+                   sum(data["Demand"] * _model.rho[n]
                        for n, data in self._node_commodities.iterrows())
 
         model.OBJ = pe.Objective(rule=objective_function, sense=pe.maximize)
@@ -378,9 +387,9 @@ class MinCostInterdiction:
             if (i, j, k) not in self.arc_commodities.index:
                 return pe.Constraint.Skip
 
-            attackable = int(self.arcs['Attackable'].get((i, j), 0))
-            has_single_cap = int(self.arc_commodities['Capacity'].get((i, j, k),-1) >= 0)
-            has_joint_cap = int(self.arcs['Capacity'].get((i, j), -1) >= 0)
+            attackable = int(self.arcs["Attackable"].get((i, j), 0))
+            has_single_cap = int(self.arc_commodities["Capacity"].get((i, j, k),-1) >= 0)
+            has_joint_cap = int(self.arcs["Capacity"].get((i, j), -1) >= 0)
 
             # edge costs constrained to by capacities, subject to flow, lessened by usage and interdictions,
             # totaling less than total cost
@@ -395,7 +404,7 @@ class MinCostInterdiction:
         def unsat_constraint_rule(_model, n, k):
             if (n, k) not in self.node_commodities.index:
                 return pe.Constraint.Skip
-            imbalance = self.node_commodities['SupplyDemand'].get((n, k), 0)
+            imbalance = self.node_commodities["Demand"].get((n, k), 0)
             supply_node = int(imbalance < 0)
             demand_node = int(imbalance > 0)
             if supply_node:
@@ -443,18 +452,18 @@ class MinCostInterdiction:
 
         # Check that we actually computed an optimal solution, load results
         if results.solver.status != pyomo.opt.SolverStatus.ok:
-            logging.warning('Check solver not ok?')
+            logging.warning("Check solver not ok?")
 
         if (results.solver.termination_condition !=
                 pyomo.opt.TerminationCondition.optimal):
-            logging.warning('Check solver optimality?')
+            logging.warning("Check solver optimality?")
 
         # grab solutions for dual and load
         self._dual.solutions.load_from(results)
 
         # Now put interdictions into xbar and solve primal
         for e in self.arcs.index:
-            self.arc_commodities.ix[e, 'xbar'] = self._dual.x[e].value
+            self.arc_commodities.ix[e, "xbar"] = self._dual.x[e].value
 
         # complete construction of the problem
         # the primal only needs the objective function redone, since the attacks play here
@@ -467,15 +476,15 @@ class MinCostInterdiction:
 
         # SOLVE the primal
         results = solver.solve(self._primal, tee=tee,
-                               keepfiles=False, options_string="mipgap=0")
+                               keepfiles=False, options_string=opts)
 
         # Check that we actually computed an optimal solution, load results
         if results.solver.status != pyomo.opt.SolverStatus.ok:
-            logging.warning('Check solver not ok?')
+            logging.warning("Check solver not ok?")
 
         if (results.solver.termination_condition !=
                 pyomo.opt.TerminationCondition.optimal):
-            logging.warning('Check solver optimality?')
+            logging.warning("Check solver optimality?")
 
         self._primal.solutions.load_from(results)
 
@@ -494,15 +503,15 @@ class MinCostInterdiction:
         self.dual_solutions = self._dual.solutions
 
         print()
-        print('----------')
-        print('Total cost with %d attack(s) = %.2f (primal) %.2f (dual)' % (
+        print("----------")
+        print("Total cost with %d attack(s) = %.2f (primal) %.2f (dual)" % (
             self.attacks, self._primal.OBJ(), self._dual.OBJ()))
-        print('Number of attack(s) implemented: %d' % self._total_attacks)
+        print("Number of attack(s) implemented: %d" % self._total_attacks)
 
         # grab interdcitions
         for a in self._arc_set:
             if self._dual.x[a].value > 0:
-                print('Interdict arc %s -> %s' % (str(a[0]), str(a[1])))
+                print("Interdict arc %s -> %s" % (str(a[0]), str(a[1])))
         print()
 
         # flows next
@@ -510,7 +519,7 @@ class MinCostInterdiction:
             for k in self._commodity_set:
                 flow = self._primal.y[(e0, e1, k)].value
                 if flow > 0:
-                    print('Flow on arc %s -> %s: %.2f %s' % (str(e0),
+                    print("Flow on arc %s -> %s: %.2f %s" % (str(e0),
                                                              str(e1), flow, str(k)))
         print()
 
@@ -521,13 +530,13 @@ class MinCostInterdiction:
         for n in node_commodity_data:
             remaining_supply = self._primal.UnsatSupply[n].value
             if remaining_supply > 0:
-                print('Remaining supply of %s on node %s: %.2f' % (str(n[1]),
+                print("Remaining supply of %s on node %s: %.2f" % (str(n[1]),
                                                                    str(n[0]), remaining_supply))
 
         for n in node_commodity_data:
             remaining_demand = self._primal.UnsatDemand[n].value
             if remaining_demand > 0:
-                print('Remaining demand of %s on node %s: %.2f' % (str(n[1]),
+                print("Remaining demand of %s on node %s: %.2f" % (str(n[1]),
                                                                    str(n[0]), remaining_demand))
         print()
 
@@ -551,11 +560,12 @@ class MinCostInterdiction:
                 idt = pd.DataFrame({"ArcCosts": self.arc_costs,
                                     "InterdictionCosts": self.interdiction_costs,
                                     "NumAttacks": self.attacks,
-                                    "From": str(a[0]),
-                                    "To": str(a[1])}, index=[self.attacks])
+                                    "StartNode": str(a[0]),
+                                    "EndNode": str(a[1])}, index=[self.attacks])
                 self.interdictions = pd.concat([self.interdictions, idt])
 
-        # flows next
+        # flows next... save separate first to use with total costs
+        new_flows = pd.DataFrame()
         for e0, e1 in self._arc_set:
             for k in self._commodity_set:
                 flow = self._primal.y[(e0, e1, k)].value
@@ -563,11 +573,30 @@ class MinCostInterdiction:
                     flw = pd.DataFrame({"ArcCosts": self.arc_costs,
                                         "InterdictionCosts": self.interdiction_costs,
                                         "NumAttacks": self.attacks,
-                                        "From": str(e0),
-                                        "To": str(e1),
+                                        "StartNode": str(e0),
+                                        "EndNode": str(e1),
                                         "Commodity": str(k),
-                                        "Units": flow}, index=[self.arc_costs])
-                    self.flows = pd.concat([self.flows, flw])
+                                        "Units": flow}, 
+                                        index=[self.arc_costs])
+                    new_flows = pd.concat([new_flows, flw])
+
+        # add new_flows to the accumulated data
+        self.flows = pd.concat([self.flows, new_flows])
+
+        # total flow costs (objective values by commodity)
+        total_costs = new_flows
+        joins = ["StartNode", "EndNode", "Commodity"]
+        total_costs = pd.merge(total_costs, self.arc_commodities, 
+                left_on=joins, right_on=joins)
+        total_costs["TotalCost"] = (total_costs["ArcCost"] + 
+                total_costs["xbar"] * 
+                total_costs["InterdictionCost"]) * total_costs["Units"]
+        total_costs["ArcCosts"] = self.arc_costs
+        total_costs["InterdictionCosts"] = self.interdiction_costs
+        total_costs["NumAttacks"] = self.attacks
+        total_costs = total_costs.groupby(by=["ArcCosts", "InterdictionCosts", "NumAttacks", "Commodity"]).sum()
+        self.total_costs = pd.concat([self.total_costs, 
+            total_costs[["TotalCost"]]])
 
         # unsatisfied flows last
         node_commodity_data = sorted(self.node_commodities.index)
@@ -594,3 +623,44 @@ class MinCostInterdiction:
                                      "Commodity": str(n[0]),
                                      "Units": remaining_demand}, index=[self.attacks])
                 self.unsatisfied_commodities = pd.concat([self.unsatisfied_commodities, dmd])
+
+# test routine
+if __name__ == "__main__":
+
+    # read in data and set parameters
+    print("Reading in data...")
+    node_data = pd.read_csv("../../sample_nodes_data.csv")
+    node_commodity_data = pd.read_csv("../../sample_nodes_commodity_data.csv")
+    arc_data = pd.read_csv("../../sample_arcs_data.csv")
+    arc_commodity_data = pd.read_csv("../../sample_arcs_commodity_data.csv")
+    arc_cost = "ArcCost"
+    interdiction_cost = "InterdictionCost"
+
+    # setup the object
+    print("Creating LP...")
+    m = MinCostInterdiction(nodes=node_data,
+                                   node_commodities=node_commodity_data,
+                                   arcs=arc_data,
+                                   arc_commodities=arc_commodity_data,
+                                   attacks=0,
+                                   arc_costs=arc_cost,
+                                   interdiction_costs=interdiction_cost)
+
+    # add any desired heuristics here and run
+    print("Solving LP...")
+    maxAttacks = 5
+    for i in range(maxAttacks+1):
+        m.attacks = i
+        m.solve()
+        print(m.flows)
+        print(m.unsatisfied_commodities)
+
+    # display the solver output for the last run
+    m._primal.display()
+    m._dual.display()
+    print("\n")
+    print(m.interdictions)
+    print(m.arc_commodities)
+    print(m.objective_values)
+    print(m.total_costs)
+

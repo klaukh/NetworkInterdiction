@@ -1,4 +1,4 @@
-Node,Commodity,SupplyDemand
+Node,Commodity,Demand
 Start,Rice,-20
 D,Rice,20
 C,Corn,-10

@@ -19,11 +19,11 @@ if __name__ == '__main__':
                        arcs=arc_data,
                        arc_commodities=arc_commodity_data)
 
-
     # add any desired heuristics here and run
     print('Solving LP...')
     m.solve()
-
+    m._primal.display()
+    print('\n')
     print(m.objective_values)
     print(m.flows)
     print(m.arc_commodities)

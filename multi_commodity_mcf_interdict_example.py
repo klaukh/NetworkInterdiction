@@ -33,6 +33,10 @@ if __name__ == '__main__':
         print(m.flows)
         print(m.unsatisfied_commodities)
 
+    # display the solver output for the last run
+    m._primal.display()
+    m._dual.display()
+    print('\n')
     print(m.arc_commodities)
     print(m.objective_values)
 
