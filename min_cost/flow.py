@@ -361,7 +361,7 @@ class MinCostFlow:
 
 
         # flows next... save separate first to use with total costs
-        new_flows = pd.DataFrame()
+        flows = pd.DataFrame()
         for e0, e1 in self._arc_set:
             for k in self._commodity_set:
                 flow = self._primal.y[(e0, e1, k)].value
@@ -371,13 +371,25 @@ class MinCostFlow:
                                         "EndNode": str(e1),
                                         "Commodity": str(k),
                                         "Units": flow}, index=[self.arc_costs])
-                    new_flows = pd.concat([new_flows, flw])
+                    flows = pd.concat([flows, flw])
 
-        # add new_flows to the accumulated data
-        self.flows = pd.concat([self.flows, new_flows])
+        # order the flows by linking start to end to next start
+        starts = self.node_commodities.reset_index()
+        starts = starts[starts["Demand"] < 0]
+        ordered_flows = pd.DataFrame()
+        for idx,data in starts.iterrows():
+            node, commodity = data[['Node','Commodity']]
+            flow = flows[(flows['StartNode'] == node) & (flows['Commodity'] == commodity)]
+            while not flow.empty:
+                ordered_flows = pd.concat([ordered_flows, flow])
+                node = flow['EndNode'].tolist()
+                flow = flows[(flows['StartNode'].isin(node)) & (flows['Commodity'] == commodity)]
+
+        # add flows to the accumulated data
+        self.flows = pd.concat([self.flows, ordered_flows])
 
         # total flow costs (objective values by commodity)
-        total_costs = new_flows
+        total_costs = flows
         joins = ["StartNode", "EndNode", "Commodity"]
         total_costs = pd.merge(total_costs, self.arc_commodities, 
                 left_on=joins, right_on=joins)
@@ -414,10 +426,10 @@ if __name__ == "__main__":
 
     # read in data and set parameters
     print("Reading in data...")
-    node_data = pd.read_csv("../../sample_nodes_data.csv")
-    node_commodity_data = pd.read_csv("../../sample_nodes_commodity_data.csv")
-    arc_data = pd.read_csv("../../sample_arcs_data.csv")
-    arc_commodity_data = pd.read_csv("../../sample_arcs_commodity_data.csv")
+    node_data = pd.read_csv("../sample_nodes_data.csv")
+    node_commodity_data = pd.read_csv("../sample_nodes_commodity_data.csv")
+    arc_data = pd.read_csv("../sample_arcs_data.csv")
+    arc_commodity_data = pd.read_csv("../sample_arcs_commodity_data.csv")
 
     # setup the object
     print("Creating LP...")
