@@ -425,10 +425,11 @@ class MinCostInterdiction:
         # Create, save the model
         self._dual = model
 
-    def solve(self, tee=False):
+    def solve(self, formulate=True, tee=False):
 
-        # complete setup
-        self.formulate()
+        # if we haven't formulated yet, complete setup
+        if formulate:
+            self.formulate()
 
         # grab the solver and options from this
         solv = self.solver
@@ -581,35 +582,37 @@ class MinCostInterdiction:
                                         index=[self.arc_costs])
                     flows = pd.concat([flows, flw])
 
-        # order the flows by linking start to end to next start
-        starts = self.node_commodities.reset_index()
-        starts = starts[starts["Demand"] < 0]
-        ordered_flows = pd.DataFrame()
-        for idx,data in starts.iterrows():
-            node, commodity = data[['Node','Commodity']]
-            flow = flows[(flows['StartNode'] == node) & (flows['Commodity'] == commodity)]
-            while not flow.empty:
-                ordered_flows = pd.concat([ordered_flows, flow])
-                node = flow['EndNode'].tolist()
-                flow = flows[(flows['StartNode'].isin(node)) & (flows['Commodity'] == commodity)]
+        # control for if there are no flows
+        if len(flows.index) != 0:
+            # order the flows by linking start to end to next start
+            starts = self.node_commodities.reset_index()
+            starts = starts[starts["Demand"] < 0]
+            ordered_flows = pd.DataFrame()
+            for idx,data in starts.iterrows():
+                node, commodity = data[['Node','Commodity']]
+                flow = flows[(flows['StartNode'] == node) & (flows['Commodity'] == commodity)]
+                while not flow.empty:
+                    ordered_flows = pd.concat([ordered_flows, flow])
+                    node = flow['EndNode'].tolist()
+                    flow = flows[(flows['StartNode'].isin(node)) & (flows['Commodity'] == commodity)]
 
-        # add flows to the accumulated data
-        self.flows = pd.concat([self.flows, ordered_flows])
+            # add flows to the accumulated data
+            self.flows = pd.concat([self.flows, ordered_flows])
 
-        # total flow costs (objective values by commodity)
-        total_costs = flows
-        joins = ["StartNode", "EndNode", "Commodity"]
-        total_costs = pd.merge(total_costs, self.arc_commodities, 
-                left_on=joins, right_on=joins)
-        total_costs["TotalCost"] = (total_costs["ArcCost"] + 
-                total_costs["xbar"] * 
-                total_costs["InterdictionCost"]) * total_costs["Units"]
-        total_costs["ArcCosts"] = self.arc_costs
-        total_costs["InterdictionCosts"] = self.interdiction_costs
-        total_costs["NumAttacks"] = self.attacks
-        total_costs = total_costs.groupby(by=["ArcCosts", "InterdictionCosts", "NumAttacks", "Commodity"]).sum()
-        self.total_costs = pd.concat([self.total_costs, 
-            total_costs[["TotalCost"]]])
+            # total flow costs (objective values by commodity)
+            total_costs = flows
+            joins = ["StartNode", "EndNode", "Commodity"]
+            total_costs = pd.merge(total_costs, self.arc_commodities, 
+                    left_on=joins, right_on=joins)
+            total_costs["TotalCost"] = (total_costs["ArcCost"] + 
+                    total_costs["xbar"] * 
+                    total_costs["InterdictionCost"]) * total_costs["Units"]
+            total_costs["ArcCosts"] = self.arc_costs
+            total_costs["InterdictionCosts"] = self.interdiction_costs
+            total_costs["NumAttacks"] = self.attacks
+            total_costs = total_costs.groupby(by=["ArcCosts", "InterdictionCosts", "NumAttacks", "Commodity"]).sum()
+            self.total_costs = pd.concat([self.total_costs, 
+                total_costs[["TotalCost"]]])
 
         # unsatisfied flows last
         node_commodity_data = sorted(self.node_commodities.index)
